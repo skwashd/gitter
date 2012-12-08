@@ -98,6 +98,25 @@ class Repository
     }
 
     /**
+     * Removes specified files.
+     *
+     * @param string|array The files to remove.
+     * @return Git\Repository
+     */
+    public function remove($files)
+    {
+        if (empty($files)) {
+          return $this;
+        }
+
+        $options = array();
+        $args = is_array($files) ? $files : explode(' ', $files);
+
+        $this->getClient()->run($this, "rm", $options, $args);
+        return $this;
+    }
+
+    /**
      * Commit changes to the repository
      *
      * @param string $message Description of the changes made
@@ -243,6 +262,26 @@ class Repository
         }
 
         return $tags;
+    }
+
+    /**
+     * Simply returns the output of git status.
+     *
+     * @return string status
+     */
+    public function hasChanges()
+    {
+        return stripos($this->getClient()->run($this, 'status'), 'nothing to commit') === FALSE;
+    }
+
+    /**
+     * Simply returns the output of git status.
+     *
+     * @return bool
+     */
+    public function hasStagedChanges()
+    {
+        return stripos($this->getClient()->run($this, 'status'), 'Changes to be committed') === FALSE;
     }
 
     /**

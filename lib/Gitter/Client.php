@@ -18,6 +18,7 @@ class Client
 {
     protected $path;
     protected $hidden;
+    protected $env;
 
     public function __construct($options = null)
     {
@@ -27,6 +28,9 @@ class Client
         }
         $this->setPath($options['path']);
         $this->setHidden((isset($options['hidden'])) ? $options['hidden'] : array());
+        if (!empty($options['env'])) {
+            $this->env = $options['env'];
+        }
     }
 
     /**
@@ -84,6 +88,23 @@ class Client
         return $repositories;
     }
 
+    /**
+     * Clones a repository to a given path.
+     *
+     * @param string $url The URL of the repo to clone
+     * @param string $path The file system path to which the repo should be cloned
+     * @param array $options optional set of options to git.
+     * @param array $args optional set of arguments to git.
+     */
+    public function cloneRepository($url, $directory, array $options = array(), array $args = array())
+    {
+        $repository = new Repository($directory, $this);
+        array_unshift($args, $url, $directory);
+
+        $this->run($repository, 'clone', $options, $args);
+        return $repository;
+    }
+
     private function recurseDirectory($path)
     {
         $dir = new \DirectoryIterator($path);
@@ -131,9 +152,27 @@ class Client
         return $repositories;
     }
 
-    public function run($repository, $command)
+    /**
+     * Execute a git command on the repository being manipulated
+     *
+     * This method will start a new process on the current machine and
+     * run git commands. Once the command has been run, the method will
+     * return the command line output.
+     *
+     * @param Repository $repository Repository where the command will be run
+     * @param string $command Git command to be run
+     * @param array $options optional set of options to git.
+     * @param array $args optional set of arguments to git.
+     *
+     * @return string Returns the command output
+     */
+    public function run($repository, $command, $options = array(), $args = array())
     {
-        $process = new Process($this->getPath() . ' -c "color.ui"=false ' . $command, $repository->getPath());
+        $prepared_command = $this->prepareCommand($command, $options, $args);
+        $process = new Process($prepared_command, $repository->getPath());
+        if (!empty($this->env)) {
+            $process->setEnv($this->env);
+        }
         $process->setTimeout(180);
         $process->run();
 
@@ -142,6 +181,51 @@ class Client
         }
 
         return $process->getOutput();
+    }
+
+    /**
+     * Gets the environment variables.
+     *
+     * @return array The current environment variables
+     */
+    public function getEnv()
+    {
+        return $this->env;
+    }
+
+    /**
+     * Sets the environment variables.
+     *
+     * @param array $env The new environment variables
+     *
+     * @return self The current Process instance
+     */
+    public function setEnv(array $env)
+    {
+        $this->env = $env;
+
+        return $this;
+    }
+
+     /**
+     * Sets the passphrase that will be used with the private key when communicating over SSH.
+     *
+     * @param string $passphrase The password to use.
+     */
+    public function setSSHPassphrase($passphrase = NULL)
+    {
+        if (NULL == $passphrase) {
+            unset($this->env['SSH_ASKPASS'], $this->env['DISPLAY'], $this->env['SSH_PASS']);
+            return;
+        }
+
+        if (empty($this->env)) {
+            $this->env = array();
+        }
+
+        $this->env['SSH_ASKPASS'] = __DIR__ . '/script/ssh-echopass';
+        $this->env['DISPLAY'] = 'hack';
+        $this->env['SSH_PASS'] = $passphrase;
     }
 
     /**
@@ -186,5 +270,42 @@ class Client
         $this->hidden = $hidden;
 
         return $this;
+    }
+
+    /**
+     * Prepares a command for execution. Prepends any Environment variables.
+     *
+     *
+     * @param array $options optional set of options to git.
+     * @param array $args optional set of arguments to git.
+     *
+     * @return string
+     *  The prepared command.
+     */
+    protected function prepareCommand($command, array $options, array $args)
+    {
+        $command_parts = array(
+          $this->getPath(),
+          '-c "color.ui"=false',
+          $command
+        );
+
+        if (count($options) > 0) {
+            $options_items = array();
+            foreach ($options as $name => $value) {
+                $options_item = $name;
+                if (!is_null($value)) {
+                    $options_item .= ' ' . escapeshellarg($value);
+                }
+                $options_items[] = $options_item;
+            }
+            $command_parts[] = implode(' ', $options_items);
+        }
+
+        if (count($args) > 0) {
+            $command_parts[] = implode(' ', array_map('escapeshellarg', $args));
+        }
+
+        return implode(' ', $command_parts);
     }
 }
