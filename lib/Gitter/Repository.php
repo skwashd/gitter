@@ -174,6 +174,16 @@ class Repository
     }
 
     /**
+     * Returns whether this repo is ahead of it's origin.
+     *
+     * @return bool
+     */
+    public function isAhead()
+    {
+        return stripos($this->getClient()->run($this, 'status'), 'Your branch is ahead') !== FALSE;
+    }
+
+    /**
      * Show a list of the repository branches
      *
      * @return array List of branches
